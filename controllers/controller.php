@@ -2,6 +2,7 @@
 
 abstract class Controller
 {
+
     /**
      * Name for url.
      *
@@ -21,7 +22,21 @@ abstract class Controller
      *
      * @var array
      */
-    public $request_uri = [];
+    public $uri_array = [];
+
+    /**
+     * URI.
+     *
+     * @var mixed|string
+     */
+    public $uri = '';
+
+    /**
+     * Request data.
+     *
+     * @var array
+     */
+    public $request = [];
 
     /**
      * Controller constructor.
@@ -32,8 +47,8 @@ abstract class Controller
         header("Access-Control-Allow-Methods: GET, POST, PATCH");
         header("Content-Type: application/json");
 
-        $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-        $this->request_uri = explode('/', trim($uri, '/'));
+        $this->uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+        $this->uri_array = explode('/', trim($this->uri, '/'));
         $this->method = $_SERVER['REQUEST_METHOD'];
     }
 
@@ -41,21 +56,79 @@ abstract class Controller
      * Handle method.
      *
      * @return mixed
+     * @throws Exception
      */
     public function handle()
     {
-        $model = $this->request_uri[0] ?? '';
-        if ($this->controllerName != $model) {
+
+        if (!$this->validate_uri()) {
             throw new RuntimeException('API path not found.', 404);
         }
+
+        if (!$this->validate_format()) {
+            throw new RuntimeException('Invalid data format.', 406);
+        }
+
+        $this->prepareData();
 
         $action = $this->getAction();
         if ($action) {
             return $this->$action();
         } else {
-            throw new RuntimeException('Invalid Method', 404);
+            throw new RuntimeException('Invalid Method', 405);
         }
 
+    }
+
+    /**
+     * URI validation function.
+     *
+     * @return bool|string
+     * @throws Exception
+     */
+    protected function validate_uri()
+    {
+        switch ($this->method) {
+            case 'GET':
+                $match = preg_match('/^\/'.$this->controllerName.'\/[1-9]\d*\/?$/', $this->uri);
+                return (bool) $match;
+                break;
+            case 'POST':
+                $match = preg_match('/^\/'.$this->controllerName.'\/?$/', $this->uri);
+                return (bool) $match;
+                break;
+            case 'PATCH':
+                $match = preg_match('/^\/'.$this->controllerName.'\/[1-9]\d*\/?$/', $this->uri);
+                return (bool) $match;
+                break;
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * Data format validation.
+     *
+     * @return bool
+     */
+    protected function validate_format()
+    {
+        $data = file_get_contents("php://input");
+
+        if (empty($data)) {
+            return true;
+        }
+
+        json_decode($data);
+        return (json_last_error() == JSON_ERROR_NONE);
+    }
+
+    /**
+     * Read data.
+     */
+    protected function prepareData()
+    {
+        $this->request = json_decode(file_get_contents("php://input"), true);
     }
 
     /**

@@ -8,11 +8,11 @@ try {
     $sql = file_get_contents(__DIR__."/database.sql");
     $result = $db->exec($sql);
     if ($result !== false) {
-        echo "Tables created successfully!";
+        echo "Tables created successfully!\n";
     } else {
         throw new PDOException($db->errorInfo()[2]);
     }
 
-} catch (PDOException $e) {
+} catch (Exception $e) {
     echo $e->getMessage();
 }

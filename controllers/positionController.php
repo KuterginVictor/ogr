@@ -20,22 +20,20 @@ class PositionController extends Controller
      */
     public function show()
     {
-        $id = $this->request_uri[1] ?? '';
-        if (intval($id) > 0) {
-            $db = DB::getInstance();
+        $id = $this->uri_array[1];
 
-            $result = $db->prepare("SELECT * FROM positions WHERE id=:id");
-            $result->execute([':id' => $id]);
-            $position = $result->fetch();
+        $db = DB::getInstance();
 
-            if ($position) {
-                return $this->response($position, 200);
-            } else {
-                return $this->response('ID position not found.', 400);
-            }
+        $result = $db->prepare("SELECT * FROM positions WHERE id=:id");
+        $result->execute([':id' => $id]);
+        $position = $result->fetch();
 
+        if (!$position) {
+            return $this->response('ID Position not found.', 400);
         }
-        return $this->response('Wrong ID parameter.', 400);
+
+        $position['value'] = json_decode($position['value']);
+        return $this->response($position, 200);
     }
 
     /**
@@ -46,18 +44,20 @@ class PositionController extends Controller
      */
     public function store()
     {
-        $data = $this->getData();
-        if ($this->validateData($data)) {
-            $db = DB::getInstance();
-
-            $query = $db->prepare("INSERT INTO positions (value) VALUES (:value)");
-            $query->execute([':value' => $data['position']]);
-            $id = $db->lastInsertId();
-
-            header("Location: /position/$id");
-            return $this->response('Position saved.', 201);
+        if (!$this->validateData()) {
+            return $this->response('Data is not valid.', 400);
         }
-        return $this->response('Wrong data.', 400);
+
+        $data = $this->preparePosition($this->request['value']);
+
+        $db = DB::getInstance();
+
+        $query = $db->prepare("INSERT INTO positions (value) VALUES (:value)");
+        $query->execute([':value' => json_encode($data)]);
+        $id = $db->lastInsertId();
+
+        header("Location: /position/$id");
+        return $this->response('Position saved.', 201);
     }
 
     /**
@@ -68,48 +68,57 @@ class PositionController extends Controller
      */
     public function update()
     {
-        $id = $this->request_uri[1] ?? '';
-        if (intval($id) > 0) {
-            $data = $this->getData();
-            if ($this->validateData($data)) {
-                $db = DB::getInstance();
-                $query = $db->prepare("UPDATE positions SET value=:value WHERE id=:id");
-                $query->execute([':value' => $data['position'], ':id' => $id]);
-                if ($query->rowCount()) {
-                    return $this->response('Position updated.', 200);
-                } else {
-                    return $this->response('Position not found.', 400);
-                }
-            }
-            return $this->response('Wrong position.', 400);
+        $id = $this->uri_array[1];
+
+        if (!$this->validateData()) {
+            return $this->response('Data is not valid.', 400);
         }
-        return $this->response('Wrong ID parameter.', 400);
+
+        $data = $this->preparePosition($this->request['value']);
+
+        $db = DB::getInstance();
+        $query = $db->prepare("UPDATE positions SET value=:value WHERE id=:id");
+        $query->execute([':value' => json_encode($data), ':id' => $id]);
+        if (!$query->rowCount()) {
+            return $this->response('ID Position not found.', 400);
+        }
+
+        return $this->response('Position updated.', 200);
     }
 
     /**
-     * Get data for POST|PATCH methods.
+     * Validate request data.
      *
-     * @return mixed
-     */
-    private function getData()
-    {
-        return json_decode(file_get_contents("php://input"), true);
-    }
-
-    /**
-     * Validate postition data.
-     *
-     * @param $data
      * @return bool
      */
-    private function validateData($data)
+    private function validateData()
     {
-        if (isset($data['position'])) {
-            $is_match = preg_match('/^[a-hA-H][1-8]$/', $data['position']);
-            if ($is_match) {
-                return true;
+
+        if (!isset($this->request['value'])) {
+            return false;
+        }
+
+        foreach ($this->request['value'] as $value) {
+            $match = preg_match('/^[WB][KQRBNP][A-H][1-8]$/', strtoupper($value));
+            if (!$match) {
+                return false;
             }
         }
-        return false;
+        return true;
+    }
+
+    /**
+     * Prepare positions for storing.
+     *
+     * @param $data
+     * @return mixed
+     */
+    private function preparePosition($data)
+    {
+        $data = array_map(function ($a) {
+            return strtoupper($a);
+        }, $data);
+
+        return $data;
     }
 }
